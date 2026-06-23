@@ -2,7 +2,7 @@
 
 This project is a beginner-friendly sports analytics and machine learning pipeline for predicting international football match outcomes, with the long-term goal of predicting and simulating the knockout stages of the 2026 FIFA World Cup.
 
-The project uses historical international football match data to train a baseline model. Eventually, the project will incorporate 2026 World Cup group-stage performance to make updated knockout-stage predictions.
+The project uses historical international football match data to train baseline models. Eventually, the project will incorporate 2026 World Cup group-stage performance to make updated knockout-stage predictions.
 
 ## Project Goal
 
@@ -35,6 +35,9 @@ data/processed/team_matches_with_form.csv
         ↓
 data/processed/matchup_training_data.csv
         ↓
+notebooks/05_baseline_model.ipynb
+        ↓
+models/baseline_logistic_regression.pkl
 models/baseline_logistic_regression_balanced.pkl
 ```
 
@@ -46,7 +49,8 @@ Raw historical match data
 → Convert matches into team-perspective rows
 → Add recent-form features
 → Convert into matchup-level training data
-→ Train a baseline logistic regression model
+→ Train baseline logistic regression models
+→ Evaluate accuracy, class-level performance, and prediction bias
 ```
 
 ## Project Structure
@@ -63,7 +67,7 @@ fifa-world-cup-predictor/
 │       ├── team_matches.csv
 │       ├── team_matches_with_form.csv
 │       ├── matchup_training_data.csv
-│       └── baseline_predictions_with_draw_logic.csv
+│       └── baseline_predictions_with_draw_logic.csv   # experimental, not final
 │
 ├── notebooks/
 │   ├── 01_data_exploration.ipynb
@@ -265,7 +269,7 @@ The target is from Team A's perspective.
 
 ### Day 6: Baseline Logistic Regression Model
 
-Trained the first baseline machine learning model.
+Trained the first baseline machine learning models.
 
 Created:
 
@@ -305,62 +309,158 @@ Evaluation included:
 
 ```text
 accuracy
+precision
+recall
+F1-score
+macro F1
+weighted F1
 classification report
 confusion matrix
-dumb baseline comparison
-predicted probabilities
 prediction counts
+actual vs predicted class distribution
 ```
 
-## Draw Prediction Issue
+### Day 6 Continued: Model Refinement and Class Weight Experiments
 
-The first baseline model predicted almost no draws.
-
-This is a known issue in football prediction because draws are harder to identify and are often less common than wins or losses.
-
-To improve this, two changes were added:
-
-### 1. Balanced Logistic Regression
-
-The model was updated to use:
-
-```python
-LogisticRegression(
-    max_iter=1000,
-    class_weight="balanced"
-)
-```
-
-This tells the model to give more weight to underrepresented classes like draws.
-
-### 2. Draw-Aware Prediction Logic
-
-Instead of always choosing the highest probability class, a custom prediction function was added.
-
-The function predicts a draw only when:
+After training the baseline logistic regression model, we investigated a major issue:
 
 ```text
-draw probability is high enough
-win and loss probabilities are balanced
-neither team has a dominant win probability
+The normal logistic regression model achieved the highest simple accuracy at first,
+but it predicted almost no draws.
 ```
 
-Function name:
+This matters because football has many draws, and a model that never predicts draws is not a useful full match-outcome model.
 
-```python
-predict_with_draw_logic
-```
-
-Decision rule:
+The test-set distribution was:
 
 ```text
-Predict draw if:
-draw_prob >= draw_threshold
-abs(win_prob - loss_prob) <= balance_threshold
-max(win_prob, loss_prob) <= max_side_threshold
+Actual test distribution:
+win     629
+loss    372
+draw    360
 ```
 
-This avoids predicting a draw in cases where one team is clearly favored.
+Several logistic-regression variations were tested:
+
+```text
+normal
+balanced
+mild_draw_boost
+medium_draw_boost
+strong_draw_boost
+very_strong_draw_boost
+```
+
+The purpose was to understand how class weighting changes model behavior.
+
+## Logistic Regression Experiment Results
+
+| Model | Accuracy | Macro F1 | Win F1 | Loss F1 | Draw F1 | Predicted Wins | Predicted Losses | Predicted Draws |
+|---|---:|---:|---:|---:|---:|---:|---:|---:|
+| normal | 0.513 | 0.36 | 0.65 | 0.43 | 0.00 | 1081 | 280 | 0 |
+| balanced | 0.484 | 0.44 | 0.60 | 0.49 | 0.22 | 650 | 475 | 236 |
+| mild_draw_boost | 0.514 | 0.37 | 0.65 | 0.45 | 0.00 | 1034 | 327 | 0 |
+| medium_draw_boost | 0.517 | 0.37 | 0.66 | 0.46 | 0.00 | 992 | 368 | 1 |
+| strong_draw_boost | 0.447 | 0.44 | 0.54 | 0.38 | 0.39 | 461 | 185 | 715 |
+| very_strong_draw_boost | 0.354 | 0.31 | 0.30 | 0.20 | 0.43 | 161 | 70 | 1130 |
+
+## Key Findings From Day 6
+
+The main finding was that class weighting changes the prediction distribution, but it does not fully solve the model problem.
+
+### Normal Logistic Regression
+
+The normal model had the best simple accuracy among the original models, but it completely ignored draws.
+
+```text
+Accuracy: 0.513
+Predicted draws: 0
+Draw F1: 0.00
+```
+
+This model is not a good final match-outcome model because it is draw-blind.
+
+### Balanced Logistic Regression
+
+The balanced model had lower accuracy, but it was healthier as a three-class model.
+
+```text
+Accuracy: 0.484
+Predicted draws: 236
+Draw F1: 0.22
+Macro F1: 0.44
+```
+
+This model treated wins, losses, and draws more seriously, but still was not strong enough to be considered final.
+
+### Mild and Medium Draw Boost
+
+The mild and medium custom class-weight models improved or matched accuracy, but still predicted almost no draws.
+
+```text
+mild_draw_boost predicted draws: 0
+medium_draw_boost predicted draws: 1
+```
+
+These models are useful as accuracy baselines, but they do not solve the draw problem.
+
+### Strong and Very Strong Draw Boost
+
+The stronger draw-weighted models predicted many more draws, but they overcorrected.
+
+```text
+strong_draw_boost predicted draws: 715
+very_strong_draw_boost predicted draws: 1130
+actual draws: 360
+```
+
+These models had poor accuracy because they became too biased toward draws.
+
+## Draw Logic Decision
+
+A custom draw-aware prediction rule was explored. The rule attempted to predict draws only when:
+
+```text
+draw probability was high enough
+win and loss probabilities were balanced
+neither side was too dominant
+```
+
+However, this was removed as the main approach for now.
+
+Reason:
+
+```text
+The draw logic changed the final prediction distribution, but it did not reliably improve accuracy or solve the underlying probability problem.
+```
+
+The project will now focus on improving the model itself rather than manually forcing draw predictions.
+
+## Model Visualization Work
+
+A visualization section was added/planned for the baseline model notebook to compare all logistic-regression experiments.
+
+Visualizations include:
+
+```text
+accuracy by model
+macro F1 by model
+accuracy vs macro F1
+F1-score by class
+precision by class
+recall by class
+predicted outcome counts by model
+actual vs predicted outcome counts
+actual vs predicted outcome percentages
+```
+
+These visuals help show the main tradeoff:
+
+```text
+Higher-accuracy logistic models tend to ignore draws.
+Draw-aware models become more balanced, but usually lose accuracy.
+Very strong draw weighting overcorrects and predicts too many draws.
+```
 
 ## Current Status
 
@@ -371,12 +471,16 @@ Completed:
 - Recent form features
 - Matchup-level training data
 - Baseline logistic regression model
-- Initial draw prediction improvements
+- Balanced logistic regression model
+- Custom class-weight experiments
+- Draw logic experiment
+- Model comparison table
+- Model comparison visualizations
 
 In Progress:
-- Improving draw prediction
-- Tuning draw thresholds
-- Improving model features
+- Improving the model itself
+- Comparing stronger model families
+- Choosing the best current model for match prediction
 ```
 
 ## Current Limitations
@@ -407,29 +511,39 @@ Because of this, the current model should be treated as an experimental baseline
 
 ### Immediate Next Steps
 
-1. Finish tuning draw prediction logic
-2. Add absolute-difference features for close-match detection
-3. Add last-10-match form features
-4. Add home/neutral-site features
-5. Evaluate with accuracy, macro F1, draw precision, and draw recall
+1. Stop tuning manual draw logic for now
+2. Try tree-based models:
+   - Random Forest
+   - Gradient Boosting
+   - HistGradientBoosting
+3. Compare tree-based models against logistic regression
+4. Evaluate models using:
+   - accuracy
+   - macro F1
+   - win/loss/draw F1
+   - prediction distribution
+   - probability quality
+5. Pick the best current model
 
 ### Medium-Term Steps
 
 1. Add team strength ratings
-2. Add opponent-adjusted recent form
-3. Add tournament importance weighting
-4. Compare logistic regression with other models
-5. Save a clean prediction function
+2. Add Elo or FIFA ranking difference
+3. Add opponent-adjusted recent form
+4. Add tournament importance weighting
+5. Add home/neutral-site features
+6. Save a clean prediction function
 
 ### Long-Term Goals
 
 1. Add 2026 World Cup group-stage data
 2. Predict knockout-stage matches
-3. Build a knockout bracket simulator
-4. Run Monte Carlo simulations
-5. Create a FastAPI backend
-6. Create a React frontend
-7. Deploy the project
+3. Convert draw probability into advancement probability for knockouts
+4. Build a knockout bracket simulator
+5. Run Monte Carlo simulations
+6. Create a FastAPI backend
+7. Create a React frontend
+8. Deploy the project
 
 ## How to Run the Project
 
@@ -538,6 +652,9 @@ data collection
 → training dataset creation
 → model training
 → evaluation
+→ model comparison
 ```
 
-Future work will focus on improving feature quality and adapting the model for 2026 World Cup knockout-stage prediction.
+Day 6 showed that manual class weighting alone is not enough to create a strong match predictor. Some logistic-regression versions achieve higher accuracy by mostly ignoring draws, while more draw-aware versions lose accuracy or overpredict draws. The next improvement should come from stronger model families and better features, not more manual threshold tuning.
+
+Future work will focus on improving feature quality, testing tree-based models, and adapting the model for 2026 World Cup knockout-stage prediction.
