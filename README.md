@@ -2,25 +2,27 @@
 
 This project is a beginner-friendly sports analytics and machine learning pipeline for predicting international football match outcomes, with the long-term goal of predicting and simulating the knockout stages of the 2026 FIFA World Cup.
 
-The project uses historical international football match data to train baseline models. Eventually, the project will incorporate 2026 World Cup group-stage performance to make updated knockout-stage predictions.
+The project uses historical international football match data to train models that predict match outcomes from Team A's perspective:
+
+* Team A win
+* Draw
+* Team A loss
+
+The longer-term goal is to use these match-level probabilities to simulate knockout-stage advancement and eventually run full tournament simulations.
 
 ## Project Goal
 
-The main goal is to build a machine learning system that can predict the outcome of a football match from Team A's perspective:
+The main goal is to build a machine learning system that predicts international football match outcomes using historical results, recent team form, and team-strength features such as Elo ratings.
 
-- Team A win
-- Draw
-- Team A loss
-
-The longer-term goal is to use these match-level predictions to simulate the 2026 World Cup knockout bracket.
+The long-term goal is to adapt the model for the 2026 FIFA World Cup by incorporating group-stage performance before predicting knockout-stage matches.
 
 ## Current Project Direction
 
-Originally, the project was planned as a full World Cup prediction platform. The current focus has been narrowed to a more realistic version:
+Originally, this project was planned as a full World Cup prediction platform. The current focus has been narrowed to a more realistic machine learning workflow:
 
-> Predict 2026 World Cup knockout-stage matches using historical international match data and recent team form, eventually updated with group-stage performance.
+> Predict 2026 World Cup knockout-stage matches using historical international match data, recent team form, and Elo-based team strength features, eventually updated with 2026 group-stage performance.
 
-This approach makes sense because football team form can change quickly, and group-stage results provide fresh information before the knockout rounds.
+This approach makes sense because football team strength changes over time, and group-stage results provide fresh information before the knockout rounds.
 
 ## Current Pipeline
 
@@ -35,10 +37,12 @@ data/processed/team_matches_with_form.csv
         ↓
 data/processed/matchup_training_data.csv
         ↓
-notebooks/05_baseline_model.ipynb
+data/processed/matchup_training_data_with_elo.csv
         ↓
-models/baseline_logistic_regression.pkl
-models/baseline_logistic_regression_balanced.pkl
+data/processed/matchup_training_data_with_clean_elo.csv
+        ↓
+models/current_best_model_with_elo.pkl
+models/current_best_model_with_elo_metadata.json
 ```
 
 In plain English:
@@ -49,8 +53,12 @@ Raw historical match data
 → Convert matches into team-perspective rows
 → Add recent-form features
 → Convert into matchup-level training data
-→ Train baseline logistic regression models
-→ Evaluate accuracy, class-level performance, and prediction bias
+→ Test logistic regression baselines
+→ Test tree-based models
+→ Add Elo rating features
+→ Clean the Elo-enhanced dataset
+→ Save the best current model
+→ Build a reusable prediction function
 ```
 
 ## Project Structure
@@ -67,6 +75,9 @@ fifa-world-cup-predictor/
 │       ├── team_matches.csv
 │       ├── team_matches_with_form.csv
 │       ├── matchup_training_data.csv
+│       ├── matchup_training_data_with_elo.csv
+│       ├── matchup_training_data_with_clean_elo.csv
+│       ├── final_elo_ratings.csv
 │       └── baseline_predictions_with_draw_logic.csv   # experimental, not final
 │
 ├── notebooks/
@@ -74,11 +85,16 @@ fifa-world-cup-predictor/
 │   ├── 02_team_perspective_data.ipynb
 │   ├── 03_recent_form_features.ipynb
 │   ├── 04_matchup_training_data.ipynb
-│   └── 05_baseline_model.ipynb
+│   ├── 05_baseline_model.ipynb
+│   ├── 06_tree_based_models.ipynb
+│   ├── 07_add_elo_features.ipynb
+│   └── 08_finalize_model_with_elo.ipynb
 │
 ├── models/
 │   ├── baseline_logistic_regression.pkl
-│   └── baseline_logistic_regression_balanced.pkl
+│   ├── baseline_logistic_regression_balanced.pkl
+│   ├── current_best_model_with_elo.pkl
+│   └── current_best_model_with_elo_metadata.json
 │
 ├── src/
 │
@@ -88,7 +104,7 @@ fifa-world-cup-predictor/
 
 ## Completed Work
 
-### Day 2: Data Exploration
+### Notebook 01: Data Exploration
 
 Loaded historical international match data and created a basic match result label.
 
@@ -108,14 +124,14 @@ away_win
 
 Main tasks completed:
 
-- Loaded raw match data
-- Inspected columns and data types
-- Checked missing values
-- Converted date column
-- Created match result labels
-- Saved processed match-level dataset
+* Loaded raw match data
+* Inspected columns and data types
+* Checked missing values
+* Converted the date column
+* Created match result labels
+* Saved processed match-level dataset
 
-### Day 3: Team-Perspective Dataset
+### Notebook 02: Team-Perspective Dataset
 
 Converted the original match-level data into team-perspective rows.
 
@@ -157,7 +173,7 @@ Argentina vs Brazil
 
 This structure makes it easier to calculate recent form and team-specific features.
 
-### Day 4: Recent Form Features
+### Notebook 03: Recent Form Features
 
 Created rolling recent-form features for each team using only matches that happened before the current match.
 
@@ -192,7 +208,7 @@ Important note:
 
 The rolling features use `shift(1)` so the model only sees matches that happened before the current match. This prevents data leakage.
 
-### Day 5: Matchup-Level Training Dataset
+### Notebook 04: Matchup-Level Training Dataset
 
 Converted team-perspective data into one row per match.
 
@@ -202,7 +218,7 @@ Created:
 data/processed/matchup_training_data.csv
 ```
 
-Each row now represents a matchup:
+Each row represents a matchup:
 
 ```text
 Team A vs Team B
@@ -221,30 +237,6 @@ team_b_goals
 tournament
 neutral
 target
-```
-
-Team A form features:
-
-```text
-team_a_last_5_points_per_match
-team_a_last_5_goals_for_per_match
-team_a_last_5_goals_against_per_match
-team_a_last_5_goal_difference_per_match
-team_a_last_5_win
-team_a_last_5_draw
-team_a_last_5_loss
-```
-
-Team B form features:
-
-```text
-team_b_last_5_points_per_match
-team_b_last_5_goals_for_per_match
-team_b_last_5_goals_against_per_match
-team_b_last_5_goal_difference_per_match
-team_b_last_5_win
-team_b_last_5_draw
-team_b_last_5_loss
 ```
 
 Difference features:
@@ -267,7 +259,7 @@ target = win / draw / loss
 
 The target is from Team A's perspective.
 
-### Day 6: Baseline Logistic Regression Model
+### Notebook 05: Baseline Logistic Regression Model
 
 Trained the first baseline machine learning models.
 
@@ -278,7 +270,7 @@ models/baseline_logistic_regression.pkl
 models/baseline_logistic_regression_balanced.pkl
 ```
 
-The model uses recent-form difference features to predict:
+The baseline model used only recent-form difference features to predict:
 
 ```text
 win / draw / loss
@@ -320,25 +312,7 @@ prediction counts
 actual vs predicted class distribution
 ```
 
-### Day 6 Continued: Model Refinement and Class Weight Experiments
-
-After training the baseline logistic regression model, we investigated a major issue:
-
-```text
-The normal logistic regression model achieved the highest simple accuracy at first,
-but it predicted almost no draws.
-```
-
-This matters because football has many draws, and a model that never predicts draws is not a useful full match-outcome model.
-
-The test-set distribution was:
-
-```text
-Actual test distribution:
-win     629
-loss    372
-draw    360
-```
+## Logistic Regression Experiment Results
 
 Several logistic-regression variations were tested:
 
@@ -351,26 +325,22 @@ strong_draw_boost
 very_strong_draw_boost
 ```
 
-The purpose was to understand how class weighting changes model behavior.
+| Model                  | Accuracy | Macro F1 | Win F1 | Loss F1 | Draw F1 | Predicted Wins | Predicted Losses | Predicted Draws |
+| ---------------------- | -------: | -------: | -----: | ------: | ------: | -------------: | ---------------: | --------------: |
+| normal                 |    0.513 |     0.36 |   0.65 |    0.43 |    0.00 |           1081 |              280 |               0 |
+| balanced               |    0.484 |     0.44 |   0.60 |    0.49 |    0.22 |            650 |              475 |             236 |
+| mild_draw_boost        |    0.514 |     0.37 |   0.65 |    0.45 |    0.00 |           1034 |              327 |               0 |
+| medium_draw_boost      |    0.517 |     0.37 |   0.66 |    0.46 |    0.00 |            992 |              368 |               1 |
+| strong_draw_boost      |    0.447 |     0.44 |   0.54 |    0.38 |    0.39 |            461 |              185 |             715 |
+| very_strong_draw_boost |    0.354 |     0.31 |   0.30 |    0.20 |    0.43 |            161 |               70 |            1130 |
 
-## Logistic Regression Experiment Results
-
-| Model | Accuracy | Macro F1 | Win F1 | Loss F1 | Draw F1 | Predicted Wins | Predicted Losses | Predicted Draws |
-|---|---:|---:|---:|---:|---:|---:|---:|---:|
-| normal | 0.513 | 0.36 | 0.65 | 0.43 | 0.00 | 1081 | 280 | 0 |
-| balanced | 0.484 | 0.44 | 0.60 | 0.49 | 0.22 | 650 | 475 | 236 |
-| mild_draw_boost | 0.514 | 0.37 | 0.65 | 0.45 | 0.00 | 1034 | 327 | 0 |
-| medium_draw_boost | 0.517 | 0.37 | 0.66 | 0.46 | 0.00 | 992 | 368 | 1 |
-| strong_draw_boost | 0.447 | 0.44 | 0.54 | 0.38 | 0.39 | 461 | 185 | 715 |
-| very_strong_draw_boost | 0.354 | 0.31 | 0.30 | 0.20 | 0.43 | 161 | 70 | 1130 |
-
-## Key Findings From Day 6
+## Key Findings From Logistic Regression
 
 The main finding was that class weighting changes the prediction distribution, but it does not fully solve the model problem.
 
 ### Normal Logistic Regression
 
-The normal model had the best simple accuracy among the original models, but it completely ignored draws.
+The normal model had strong raw accuracy for a baseline, but it completely ignored draws.
 
 ```text
 Accuracy: 0.513
@@ -393,20 +363,16 @@ Macro F1: 0.44
 
 This model treated wins, losses, and draws more seriously, but still was not strong enough to be considered final.
 
-### Mild and Medium Draw Boost
+### Draw-Boosted Logistic Regression
 
-The mild and medium custom class-weight models improved or matched accuracy, but still predicted almost no draws.
+Mild and medium draw boosting improved or matched raw accuracy, but still predicted almost no draws.
 
 ```text
 mild_draw_boost predicted draws: 0
 medium_draw_boost predicted draws: 1
 ```
 
-These models are useful as accuracy baselines, but they do not solve the draw problem.
-
-### Strong and Very Strong Draw Boost
-
-The stronger draw-weighted models predicted many more draws, but they overcorrected.
+Strong and very strong draw boosting predicted many more draws, but they overcorrected.
 
 ```text
 strong_draw_boost predicted draws: 715
@@ -414,53 +380,249 @@ very_strong_draw_boost predicted draws: 1130
 actual draws: 360
 ```
 
-These models had poor accuracy because they became too biased toward draws.
+The project moved away from manual draw logic and focused on improving the feature set and model family instead.
 
-## Draw Logic Decision
+## Notebook 06: Tree-Based Models
 
-A custom draw-aware prediction rule was explored. The rule attempted to predict draws only when:
+After logistic regression, tree-based models were tested to see whether stronger model families could better capture non-linear patterns.
+
+Models tested:
 
 ```text
-draw probability was high enough
-win and loss probabilities were balanced
-neither side was too dominant
+RandomForestClassifier
+GradientBoostingClassifier
+HistGradientBoostingClassifier
+GradientBoostingClassifier with balanced sample weights
+HistGradientBoostingClassifier with balanced sample weights
 ```
 
-However, this was removed as the main approach for now.
+Evaluation metrics:
+
+```text
+accuracy
+macro F1
+weighted F1
+win F1
+draw F1
+loss F1
+prediction counts
+classification report
+confusion matrix
+```
+
+## Tree-Based Model Results
+
+| Model                           | Accuracy | Macro F1 | Weighted F1 | Win F1 | Draw F1 | Loss F1 | Predicted Wins | Predicted Draws | Predicted Losses |
+| ------------------------------- | -------: | -------: | ----------: | -----: | ------: | ------: | -------------: | --------------: | ---------------: |
+| gradient_boosting_balanced      |    0.458 |    0.445 |       0.472 |  0.553 |   0.314 |   0.468 |           2917 |            2892 |             2346 |
+| hist_gradient_boosting_balanced |    0.458 |    0.444 |       0.472 |  0.553 |   0.308 |   0.472 |           2963 |            2824 |             2368 |
+| logistic_balanced               |    0.490 |    0.444 |       0.485 |  0.606 |   0.233 |   0.493 |           3717 |            1524 |             2914 |
+| random_forest                   |    0.448 |    0.426 |       0.457 |  0.556 |   0.284 |   0.439 |           3254 |            2491 |             2410 |
+| logistic_medium_draw_boost      |    0.468 |    0.396 |       0.443 |  0.635 |   0.343 |   0.209 |           4378 |            3330 |              447 |
+| gradient_boosting               |    0.529 |    0.365 |       0.439 |  0.666 |   0.008 |   0.421 |           6604 |              12 |             1539 |
+| logistic_normal                 |    0.526 |    0.361 |       0.436 |  0.663 |   0.000 |   0.420 |           6569 |               0 |             1586 |
+| hist_gradient_boosting          |    0.524 |    0.360 |       0.434 |  0.663 |   0.007 |   0.409 |           6625 |              13 |             1517 |
+
+## Key Findings From Tree-Based Models
+
+Tree-based models confirmed the same tradeoff seen in logistic regression:
+
+```text
+The highest-accuracy models still tended to ignore draws.
+Balanced models had lower raw accuracy but much healthier class balance.
+```
+
+The best tree-based model before Elo was:
+
+```text
+gradient_boosting_balanced
+```
+
+It had the strongest macro F1 among the non-Elo models:
+
+```text
+Accuracy: 0.458
+Macro F1: 0.445
+Draw F1: 0.314
+```
+
+However, the overall performance was still limited because the model only used recent-form difference features.
+
+## Notebook 07: Elo Rating Features
+
+The next improvement was adding Elo ratings as a team-strength feature.
+
+Created:
+
+```text
+data/processed/matchup_training_data_with_elo.csv
+```
+
+Added features:
+
+```text
+team_a_elo_before
+team_b_elo_before
+elo_diff
+```
+
+The main Elo feature used for modeling was:
+
+```text
+elo_diff = team_a_elo_before - team_b_elo_before
+```
+
+This feature gives the model a stronger estimate of overall team quality, instead of relying only on recent form.
+
+## Features With Elo
+
+The Elo-enhanced models use:
+
+```text
+last_5_points_per_match_diff
+last_5_goals_for_per_match_diff
+last_5_goals_against_per_match_diff
+last_5_goal_difference_per_match_diff
+last_5_win_diff
+last_5_draw_diff
+last_5_loss_diff
+elo_diff
+```
+
+## Elo Model Results
+
+| Model                                    | Accuracy | Macro F1 | Weighted F1 | Win F1 | Draw F1 | Loss F1 | Predicted Wins | Predicted Draws | Predicted Losses |
+| ---------------------------------------- | -------: | -------: | ----------: | -----: | ------: | ------: | -------------: | --------------: | ---------------: |
+| gradient_boosting_balanced_with_elo      |    0.566 |    0.526 |       0.567 |  0.687 |   0.310 |   0.582 |           3760 |            1949 |             2450 |
+| hist_gradient_boosting_balanced_with_elo |    0.569 |    0.525 |       0.567 |  0.690 |   0.300 |   0.586 |           3803 |            1812 |             2544 |
+| logistic_balanced_with_elo               |    0.576 |    0.525 |       0.569 |  0.696 |   0.282 |   0.598 |           3972 |            1616 |             2571 |
+
+## Key Findings From Elo
+
+Adding Elo significantly improved the models.
+
+Before Elo, the best macro F1 was about:
+
+```text
+0.445
+```
+
+After Elo, the best macro F1 was about:
+
+```text
+0.526
+```
+
+This was one of the most important improvements in the project so far.
+
+The strongest confirmed model from Notebook 07 was:
+
+```text
+gradient_boosting_balanced_with_elo
+```
 
 Reason:
 
 ```text
-The draw logic changed the final prediction distribution, but it did not reliably improve accuracy or solve the underlying probability problem.
+It had the best macro F1 and strongest draw F1 among the Elo models.
 ```
 
-The project will now focus on improving the model itself rather than manually forcing draw predictions.
+Although `logistic_balanced_with_elo` had the highest raw accuracy, `gradient_boosting_balanced_with_elo` was preferred because the project needs balanced class performance and useful probabilities for simulation, not just accuracy.
 
-## Model Visualization Work
+## Notebook 08: Finalize Model With Clean Elo
 
-A visualization section was added/planned for the baseline model notebook to compare all logistic-regression experiments.
+Notebook 08 was created to clean up the Elo-enhanced workflow before moving on to prediction and simulation.
 
-Visualizations include:
+Main goals:
 
 ```text
-accuracy by model
-macro F1 by model
-accuracy vs macro F1
-F1-score by class
-precision by class
-recall by class
-predicted outcome counts by model
-actual vs predicted outcome counts
-actual vs predicted outcome percentages
+Remove unplayed matches with missing scores
+Rebuild Elo using only played matches
+Prevent duplicate rows during Elo merging
+Handle missing values cleanly
+Retrain final candidate models
+Select the best current model
+Save the model and metadata
+Create a reusable predict_match() function
 ```
 
-These visuals help show the main tradeoff:
+Important cleanup decisions:
 
 ```text
-Higher-accuracy logistic models tend to ignore draws.
-Draw-aware models become more balanced, but usually lose accuracy.
-Very strong draw weighting overcorrects and predicts too many draws.
+Rows with missing match scores are removed before training.
+Rows with missing Elo values are dropped.
+Missing recent-form difference values are filled with 0.
 ```
+
+The reasoning is:
+
+```text
+Missing scores should not be treated as draws.
+Missing Elo usually means the Elo merge failed for that row.
+Missing recent-form differences can reasonably be treated as neutral form difference.
+```
+
+Notebook 08 creates or updates:
+
+```text
+data/processed/matchup_training_data_with_clean_elo.csv
+data/processed/final_elo_ratings.csv
+models/current_best_model_with_elo.pkl
+models/current_best_model_with_elo_metadata.json
+```
+
+It also introduces a first reusable prediction helper:
+
+```python
+predict_match("France", "Brazil")
+```
+
+The function returns:
+
+```text
+Team A win probability
+Draw probability
+Team B win probability
+Simple Team A advancement probability
+Simple Team B advancement probability
+```
+
+For knockout matches, the beginner advancement formula is:
+
+```text
+Team A advances = Team A win probability + 0.5 * draw probability
+Team B advances = Team B win probability + 0.5 * draw probability
+```
+
+This can later be improved with extra-time, penalty, or team-strength assumptions.
+
+## Current Best Model Status
+
+The current best confirmed model before the final clean rerun is:
+
+```text
+gradient_boosting_balanced_with_elo
+```
+
+Why this model is preferred:
+
+```text
+It has the highest confirmed macro F1.
+It has the strongest confirmed draw F1 among the Elo models.
+It predicts a reasonable number of wins, draws, and losses.
+It supports probability outputs through predict_proba().
+```
+
+The final saved model from Notebook 08 should be selected using:
+
+```text
+macro F1
+draw F1
+accuracy
+prediction distribution
+```
+
+A model should not be chosen based only on raw accuracy because a model can achieve decent accuracy while ignoring draws.
 
 ## Current Status
 
@@ -468,82 +630,87 @@ Very strong draw weighting overcorrects and predicts too many draws.
 Completed:
 - Data exploration
 - Team-perspective dataset
-- Recent form features
-- Matchup-level training data
+- Recent-form feature engineering
+- Matchup-level training dataset
 - Baseline logistic regression model
 - Balanced logistic regression model
 - Custom class-weight experiments
 - Draw logic experiment
-- Model comparison table
 - Model comparison visualizations
+- Tree-based model testing
+- Balanced tree-based model testing
+- Elo rating feature engineering
+- Elo-enhanced model comparison
+- Clean Elo finalization notebook
+- Missing-value cleanup strategy
+- First reusable predict_match() helper
 
-In Progress:
-- Improving the model itself
-- Comparing stronger model families
-- Choosing the best current model for match prediction
+Current stage:
+- Finalizing the best Elo-enhanced model
+- Saving the model and metadata
+- Preparing for knockout-stage simulation logic
 ```
 
 ## Current Limitations
 
-The current model is only a baseline. It does not yet include many important football prediction features.
+The current model is much stronger than the original baseline, but it is still not a final high-confidence football predictor.
 
-Missing features include:
+Current limitations include:
 
 ```text
-team historical strength
-FIFA rankings
-Elo ratings
-opponent-adjusted form
-home/neutral advantage
-tournament importance
-last_10 form features
-absolute difference features
-head-to-head history
-World Cup group-stage form
-player/squad data
-injury data
-xG or advanced match statistics
+No FIFA ranking features yet
+No opponent-adjusted form yet
+No last-10-match form features yet
+No tournament importance weighting yet
+No advanced home/neutral-site adjustment yet
+No head-to-head history yet
+No squad/player availability data
+No injury data
+No xG or advanced match statistics
+No betting market comparison
+No probability calibration yet
+No full knockout bracket simulator yet
 ```
 
-Because of this, the current model should be treated as an experimental baseline, not a final predictor.
+The model should currently be treated as a strong project milestone, not a production-quality predictor.
 
 ## Next Steps
 
 ### Immediate Next Steps
 
-1. Stop tuning manual draw logic for now
-2. Try tree-based models:
-   - Random Forest
-   - Gradient Boosting
-   - HistGradientBoosting
-3. Compare tree-based models against logistic regression
-4. Evaluate models using:
-   - accuracy
-   - macro F1
-   - win/loss/draw F1
-   - prediction distribution
-   - probability quality
-5. Pick the best current model
+1. Finish running `08_finalize_model_with_elo.ipynb`
+2. Confirm the final clean model results from `final_results_df`
+3. Save the best model and metadata
+4. Test `predict_match()` on several matchups
+5. Start knockout-stage prediction logic
 
-### Medium-Term Steps
+### Short-Term Modeling Improvements
 
-1. Add team strength ratings
-2. Add Elo or FIFA ranking difference
-3. Add opponent-adjusted recent form
-4. Add tournament importance weighting
-5. Add home/neutral-site features
-6. Save a clean prediction function
+1. Add probability calibration
+2. Compare calibrated vs uncalibrated probabilities
+3. Add last-10-match form features
+4. Add home/neutral-site advantage
+5. Add long-term team strength features
+6. Add opponent-adjusted form
+
+### Simulation Steps
+
+1. Build a function that predicts a knockout match
+2. Convert draw probability into advancement probability
+3. Build a single-match advancement simulator
+4. Build a bracket simulator
+5. Run Monte Carlo simulations
+6. Estimate advancement and championship probabilities
 
 ### Long-Term Goals
 
 1. Add 2026 World Cup group-stage data
 2. Predict knockout-stage matches
-3. Convert draw probability into advancement probability for knockouts
-4. Build a knockout bracket simulator
-5. Run Monte Carlo simulations
-6. Create a FastAPI backend
-7. Create a React frontend
-8. Deploy the project
+3. Simulate the full knockout bracket
+4. Create a FastAPI backend
+5. Create a React frontend
+6. Deploy the project
+7. Publish a polished GitHub repository
 
 ## How to Run the Project
 
@@ -579,7 +746,7 @@ pip install -r requirements.txt
 jupyter notebook
 ```
 
-Then run the notebooks in order:
+### 5. Run the notebooks in order
 
 ```text
 01_data_exploration.ipynb
@@ -587,6 +754,9 @@ Then run the notebooks in order:
 03_recent_form_features.ipynb
 04_matchup_training_data.ipynb
 05_baseline_model.ipynb
+06_tree_based_models.ipynb
+07_add_elo_features.ipynb
+08_finalize_model_with_elo.ipynb
 ```
 
 ## Main Files
@@ -623,7 +793,25 @@ Team-perspective data with recent-form features.
 data/processed/matchup_training_data.csv
 ```
 
-Final matchup-level dataset used for model training.
+Matchup-level dataset with recent-form difference features.
+
+```text
+data/processed/matchup_training_data_with_elo.csv
+```
+
+Matchup-level dataset with Elo features added.
+
+```text
+data/processed/matchup_training_data_with_clean_elo.csv
+```
+
+Cleaned Elo-enhanced dataset used for final model selection.
+
+```text
+data/processed/final_elo_ratings.csv
+```
+
+Latest Elo rating for each team after processing historical matches.
 
 ### Models
 
@@ -637,24 +825,40 @@ Initial logistic regression model.
 models/baseline_logistic_regression_balanced.pkl
 ```
 
-Updated logistic regression model with class balancing.
+Balanced logistic regression model.
+
+```text
+models/current_best_model_with_elo.pkl
+```
+
+Current best saved model using recent-form and Elo features.
+
+```text
+models/current_best_model_with_elo_metadata.json
+```
+
+Metadata for the current best model, including features, target column, split date, and metrics.
 
 ## Notes
 
-This project is still in progress. The current model is meant to establish a complete baseline pipeline, not to produce final high-confidence predictions.
+This project is still in progress. The current model is intended to build a complete and understandable sports analytics workflow rather than produce guaranteed predictions.
 
-The most important accomplishment so far is that the project now has a working machine learning workflow:
+The most important accomplishment so far is that the project now has a full machine learning pipeline:
 
 ```text
 data collection
 → data cleaning
-→ feature engineering
-→ training dataset creation
-→ model training
-→ evaluation
-→ model comparison
+→ team-perspective transformation
+→ recent-form feature engineering
+→ matchup-level dataset creation
+→ baseline modeling
+→ model refinement
+→ tree-based model testing
+→ Elo feature engineering
+→ model finalization
+→ prediction helper function
 ```
 
-Day 6 showed that manual class weighting alone is not enough to create a strong match predictor. Some logistic-regression versions achieve higher accuracy by mostly ignoring draws, while more draw-aware versions lose accuracy or overpredict draws. The next improvement should come from stronger model families and better features, not more manual threshold tuning.
+The biggest modeling lesson so far is that raw accuracy alone is not enough. Some models achieve decent accuracy by mostly ignoring draws, which is not acceptable for a full football match-outcome predictor. Macro F1, draw F1, and prediction distribution are important because the final tournament simulator needs meaningful probabilities for all three outcomes.
 
-Future work will focus on improving feature quality, testing tree-based models, and adapting the model for 2026 World Cup knockout-stage prediction.
+The next major milestone is to move from single-match prediction to knockout-stage advancement simulation.
