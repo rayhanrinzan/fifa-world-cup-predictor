@@ -1,5 +1,6 @@
-# Virtual environment
+# Virtual environments
 .venv/
+.venv_app/
 
 # Python cache
 __pycache__/
@@ -8,13 +9,24 @@ __pycache__/
 # Jupyter
 .ipynb_checkpoints/
 
-# Data files
+# Raw data files
+# Keep large/raw source data out of git by default.
 data/raw/*.csv
+
+# Processed data files
+# Most generated CSVs stay ignored, but the Streamlit app needs these selected outputs.
 data/processed/*.csv
+!data/processed/team_matches.csv
+!data/processed/final_elo_ratings.csv
+!data/processed/actual_deterministic_bracket_results.csv
+!data/processed/monte_carlo_knockout_simulation_results.csv
+!data/processed/match_prediction_matrix.csv
 
 # Models
+# Model binaries are ignored by default. The current Streamlit app reads saved CSV outputs instead.
 models/*.pkl
 models/*.joblib
+!models/current_best_model_with_elo_metadata.json
 
 # Mac system files
 .DS_Store
