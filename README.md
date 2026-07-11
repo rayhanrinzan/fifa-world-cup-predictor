@@ -617,6 +617,19 @@ Portugal — 5.60%
 England — 5.29%
 Brazil — 5.17%
 ```
+## Visual Results
+
+### Championship Probabilities
+
+![Top 10 Championship Probabilities](assets/championship_probabilities.png)
+
+### Final Appearance Probabilities
+
+![Top 10 Final Appearance Probabilities](assets/final_probabilities.png)
+
+### Semifinal Appearance Probabilities
+
+![Top 10 Semifinal Appearance Probabilities](assets/semifinal_probabilities.png)
 
 ## Results Interpretation
 
