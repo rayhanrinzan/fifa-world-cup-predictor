@@ -5,9 +5,10 @@ import pandas as pd
 
 # Add project root to Python path so scripts can import from src/
 PROJECT_ROOT = Path(__file__).resolve().parents[1]
-sys.path.append(str(PROJECT_ROOT))
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.knockout_predictor import KnockoutPredictor
+
 
 ACTUAL_ROUND_OF_32 = [
     ("Germany", "Paraguay"),
@@ -34,7 +35,10 @@ ACTUAL_ROUND_OF_32 = [
 
 def main():
     project_root = PROJECT_ROOT
-    output_path = project_root / "data" / "processed" / "match_prediction_matrix.csv"
+    output_dir = project_root / "data" / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    output_path = output_dir / "match_prediction_matrix.csv"
 
     teams = sorted(set(team for matchup in ACTUAL_ROUND_OF_32 for team in matchup))
 
