@@ -1,4 +1,9 @@
 from pathlib import Path
+import sys
+
+# Add project root to Python path so scripts can import from src/
+PROJECT_ROOT = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(PROJECT_ROOT))
 
 from src.knockout_predictor import KnockoutPredictor
 from src.bracket_simulator import BracketSimulator
@@ -28,7 +33,7 @@ actual_round_of_32 = [
 
 
 def main():
-    project_root = Path.cwd()
+    project_root = PROJECT_ROOT
 
     predictor = KnockoutPredictor(project_root=project_root)
     simulator = BracketSimulator(predictor)
@@ -44,6 +49,7 @@ def main():
     print()
 
     output_dir = project_root / "data" / "processed"
+    output_dir.mkdir(parents=True, exist_ok=True)
 
     deterministic_path = output_dir / "actual_deterministic_bracket_results.csv"
     deterministic_results.to_csv(deterministic_path, index=False)
