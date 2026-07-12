@@ -1,5 +1,7 @@
 # FIFA World Cup 2026 Knockout Match Prediction Project
 
+Check out the app [here](https://fifawcpredictor.streamlit.app/)!
+
 This project is a sports analytics and machine learning pipeline for predicting international football match outcomes and simulating the knockout stage of the 2026 FIFA World Cup.
 
 The model predicts match outcomes from Team A's perspective:
