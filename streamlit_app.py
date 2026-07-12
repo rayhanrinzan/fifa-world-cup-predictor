@@ -76,77 +76,10 @@ def format_percent(value):
     return f"{as_percent(value):.2f}%"
 
 
-def get_team_options(prediction_rows, bracket_rows):
-    teams = set()
-
-    if prediction_rows:
-        for row in prediction_rows:
-            if row.get("team_a"):
-                teams.add(row["team_a"])
-            if row.get("team_b"):
-                teams.add(row["team_b"])
-
-    elif bracket_rows:
-        for row in bracket_rows:
-            if row.get("team_a"):
-                teams.add(row["team_a"])
-            if row.get("team_b"):
-                teams.add(row["team_b"])
-
-    if not teams:
-        teams = set(BRACKET_TEAMS)
-
-    return sorted(teams)
-
-
-def invert_match_outcome(outcome):
-    if outcome == "win":
-        return "loss"
-    if outcome == "loss":
-        return "win"
-    return outcome
-
-
-def normalize_prediction_order(row, requested_team_a, requested_team_b, was_reversed):
-    prediction = dict(row)
-
-    if not was_reversed:
-        return prediction
-
-    prediction["team_a"] = requested_team_a
-    prediction["team_b"] = requested_team_b
-
-    if "team_a_win_probability" in prediction and "team_b_win_probability" in prediction:
-        original_team_a_win = prediction.get("team_a_win_probability")
-        original_team_b_win = prediction.get("team_b_win_probability")
-        prediction["team_a_win_probability"] = original_team_b_win
-        prediction["team_b_win_probability"] = original_team_a_win
-
-    if "team_a_advancement_probability" in prediction and "team_b_advancement_probability" in prediction:
-        original_team_a_adv = prediction.get("team_a_advancement_probability")
-        original_team_b_adv = prediction.get("team_b_advancement_probability")
-        prediction["team_a_advancement_probability"] = original_team_b_adv
-        prediction["team_b_advancement_probability"] = original_team_a_adv
-
-    if "predicted_outcome_from_team_a_perspective" in prediction:
-        prediction["predicted_outcome_from_team_a_perspective"] = invert_match_outcome(
-            prediction.get("predicted_outcome_from_team_a_perspective")
-        )
-
-    return prediction
-
-
 def get_saved_match_prediction(prediction_rows, team_a, team_b):
-    if not prediction_rows:
-        return None
-
     for row in prediction_rows:
         if row.get("team_a") == team_a and row.get("team_b") == team_b:
-            return normalize_prediction_order(row, team_a, team_b, was_reversed=False)
-
-    for row in prediction_rows:
-        if row.get("team_a") == team_b and row.get("team_b") == team_a:
-            return normalize_prediction_order(row, team_a, team_b, was_reversed=True)
+            return row
 
     return None
 
@@ -223,22 +156,13 @@ st.title("⚽ FIFA World Cup 2026 Knockout Match Predictor")
 
 st.markdown(
     """
-    This app predicts 2026 World Cup knockout outcomes using saved CSV outputs from a machine learning
+    This app predicts 2026 World Cup knockout matchups using saved outputs from a machine learning
     pipeline trained on historical international match results, recent team form, and Elo rating features.
 
-    For stability, the web app does not load the model and does not import pandas, NumPy, scikit-learn,
-    or joblib. It only reads precomputed CSV files.
+    For stability, the web app reads precomputed CSV files instead of loading the model or recomputing
+    predictions inside Streamlit.
     """
 )
-
-
-prediction_matrix_path = DATA_PROCESSED / "match_prediction_matrix.csv"
-deterministic_path = DATA_PROCESSED / "actual_deterministic_bracket_results.csv"
-monte_carlo_path = DATA_PROCESSED / "monte_carlo_knockout_simulation_results.csv"
-
-prediction_rows = load_csv_rows(str(prediction_matrix_path))
-bracket_rows = load_csv_rows(str(deterministic_path))
-monte_carlo_rows = load_csv_rows(str(monte_carlo_path))
 
 
 tab1, tab2, tab3, tab4 = st.tabs(
@@ -254,71 +178,57 @@ tab1, tab2, tab3, tab4 = st.tabs(
 with tab1:
     st.header("Single Knockout Match Predictor")
 
-    if prediction_rows:
-        rows_to_search = prediction_rows
-        st.caption("Using saved pairwise predictions from `match_prediction_matrix.csv`.")
-    else:
-        rows_to_search = bracket_rows
-        st.info(
-            "`match_prediction_matrix.csv` was not found, so this tab is using saved deterministic "
-            "bracket matchups only. Some team combinations may not be available until the matrix is generated."
-        )
+    prediction_matrix_path = DATA_PROCESSED / "match_prediction_matrix.csv"
+    prediction_rows = load_csv_rows(str(prediction_matrix_path))
 
-    if not rows_to_search:
+    if prediction_rows is None:
         st.warning(
-            "No saved prediction CSV was found. Add either "
-            "`data/processed/match_prediction_matrix.csv` or "
-            "`data/processed/actual_deterministic_bracket_results.csv`."
+            "Match prediction matrix not found. "
+            "Run `python scripts/create_match_prediction_matrix.py` first."
         )
     else:
-        team_options = get_team_options(prediction_rows, bracket_rows)
-
         col1, col2 = st.columns(2)
 
         with col1:
-            default_team_a = team_options.index("France") if "France" in team_options else 0
-            team_a = st.selectbox("Team A", team_options, index=default_team_a)
+            default_team_a = BRACKET_TEAMS.index("France") if "France" in BRACKET_TEAMS else 0
+            team_a = st.selectbox("Team A", BRACKET_TEAMS, index=default_team_a)
 
         with col2:
-            default_team_b = team_options.index("Brazil") if "Brazil" in team_options else min(1, len(team_options) - 1)
-            team_b = st.selectbox("Team B", team_options, index=default_team_b)
+            default_team_b = BRACKET_TEAMS.index("Brazil") if "Brazil" in BRACKET_TEAMS else 1
+            team_b = st.selectbox("Team B", BRACKET_TEAMS, index=default_team_b)
 
         if team_a == team_b:
             st.warning("Please choose two different teams.")
         else:
             prediction = get_saved_match_prediction(
-                rows_to_search,
+                prediction_rows,
                 team_a,
                 team_b,
             )
 
             if prediction is None:
-                st.error(
-                    f"No saved prediction was found for {team_a} vs {team_b}. "
-                    "Generate `data/processed/match_prediction_matrix.csv` to support every pairwise matchup."
-                )
+                st.error("Prediction not found for this matchup.")
             else:
                 st.subheader(f"{team_a} vs {team_b}")
 
-                if "team_a_win_probability" in prediction:
-                    metric_col1, metric_col2, metric_col3 = st.columns(3)
+                metric_col1, metric_col2, metric_col3 = st.columns(3)
 
-                    metric_col1.metric(
-                        f"{team_a} Win",
-                        format_percent(prediction.get("team_a_win_probability")),
-                    )
+                metric_col1.metric(
+                    f"{team_a} Win",
+                    format_percent(prediction.get("team_a_win_probability")),
+                )
 
-                    metric_col2.metric(
-                        "Draw",
-                        format_percent(prediction.get("draw_probability")),
-                    )
+                metric_col2.metric(
+                    "Draw",
+                    format_percent(prediction.get("draw_probability")),
+                )
 
-                    metric_col3.metric(
-                        f"{team_b} Win",
-                        format_percent(prediction.get("team_b_win_probability")),
-                    )
+                metric_col3.metric(
+                    f"{team_b} Win",
+                    format_percent(prediction.get("team_b_win_probability")),
+                )
 
-                    st.divider()
+                st.divider()
 
                 adv_col1, adv_col2, adv_col3 = st.columns(3)
 
@@ -337,11 +247,9 @@ with tab1:
                     prediction.get("predicted_advancing_team", ""),
                 )
 
-                st.subheader("Saved Prediction Output")
+                st.subheader("Full Prediction Output")
 
                 prediction_columns = [
-                    "round",
-                    "match_number",
                     "team_a",
                     "team_b",
                     "predicted_outcome_from_team_a_perspective",
@@ -352,8 +260,6 @@ with tab1:
                     "team_b_advancement_probability",
                     "predicted_advancing_team",
                 ]
-
-                prediction_columns = [col for col in prediction_columns if col in prediction]
 
                 probability_columns = [
                     "team_a_win_probability",
@@ -383,10 +289,13 @@ with tab2:
         """
     )
 
+    deterministic_path = DATA_PROCESSED / "actual_deterministic_bracket_results.csv"
+    bracket_rows = load_csv_rows(str(deterministic_path))
+
     if bracket_rows is None:
         st.warning(
-            "Deterministic bracket results file not found: "
-            "`data/processed/actual_deterministic_bracket_results.csv`."
+            "Deterministic bracket results file not found. "
+            "Run `python scripts/run_knockout_simulation.py` first."
         )
     else:
         final_rows = [
@@ -435,10 +344,13 @@ with tab3:
         """
     )
 
+    monte_carlo_path = DATA_PROCESSED / "monte_carlo_knockout_simulation_results.csv"
+    monte_carlo_rows = load_csv_rows(str(monte_carlo_path))
+
     if monte_carlo_rows is None:
         st.warning(
-            "Monte Carlo results file not found: "
-            "`data/processed/monte_carlo_knockout_simulation_results.csv`."
+            "Monte Carlo results file not found. "
+            "Run `python scripts/run_knockout_simulation.py` first."
         )
     else:
         sorted_rows = sort_rows_by_probability(
@@ -450,7 +362,7 @@ with tab3:
 
         st.subheader("Top 10 Championship Probabilities")
 
-        monte_carlo_columns = [
+        top_columns = [
             "team",
             "round_of_16",
             "quarterfinals",
@@ -470,7 +382,7 @@ with tab3:
         st.markdown(
             make_html_table(
                 top_10,
-                monte_carlo_columns,
+                top_columns,
                 probability_columns=monte_carlo_probability_columns,
             ),
             unsafe_allow_html=True,
@@ -481,7 +393,7 @@ with tab3:
         st.markdown(
             make_html_table(
                 sorted_rows,
-                monte_carlo_columns,
+                top_columns,
                 probability_columns=monte_carlo_probability_columns,
             ),
             unsafe_allow_html=True,
