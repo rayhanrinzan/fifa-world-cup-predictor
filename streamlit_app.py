@@ -76,28 +76,79 @@ def format_percent(value):
     return f"{as_percent(value):.2f}%"
 
 
+def get_team_options(prediction_rows, bracket_rows):
+    teams = set()
+
+    if prediction_rows:
+        for row in prediction_rows:
+            if row.get("team_a"):
+                teams.add(row["team_a"])
+            if row.get("team_b"):
+                teams.add(row["team_b"])
+
+    elif bracket_rows:
+        for row in bracket_rows:
+            if row.get("team_a"):
+                teams.add(row["team_a"])
+            if row.get("team_b"):
+                teams.add(row["team_b"])
+
+    if not teams:
+        teams = set(BRACKET_TEAMS)
+
+    return sorted(teams)
+
+
+def invert_match_outcome(outcome):
+    if outcome == "win":
+        return "loss"
+    if outcome == "loss":
+        return "win"
+    return outcome
+
+
+def normalize_prediction_order(row, requested_team_a, requested_team_b, was_reversed):
+    prediction = dict(row)
+
+    if not was_reversed:
+        return prediction
+
+    prediction["team_a"] = requested_team_a
+    prediction["team_b"] = requested_team_b
+
+    if "team_a_win_probability" in prediction and "team_b_win_probability" in prediction:
+        original_team_a_win = prediction.get("team_a_win_probability")
+        original_team_b_win = prediction.get("team_b_win_probability")
+        prediction["team_a_win_probability"] = original_team_b_win
+        prediction["team_b_win_probability"] = original_team_a_win
+
+    if "team_a_advancement_probability" in prediction and "team_b_advancement_probability" in prediction:
+        original_team_a_adv = prediction.get("team_a_advancement_probability")
+        original_team_b_adv = prediction.get("team_b_advancement_probability")
+        prediction["team_a_advancement_probability"] = original_team_b_adv
+        prediction["team_b_advancement_probability"] = original_team_a_adv
+
+    if "predicted_outcome_from_team_a_perspective" in prediction:
+        prediction["predicted_outcome_from_team_a_perspective"] = invert_match_outcome(
+            prediction.get("predicted_outcome_from_team_a_perspective")
+        )
+
+    return prediction
+
+
 def get_saved_match_prediction(prediction_rows, team_a, team_b):
+    if not prediction_rows:
+        return None
+
     for row in prediction_rows:
         if row.get("team_a") == team_a and row.get("team_b") == team_b:
-            return row
+            return normalize_prediction_order(row, team_a, team_b, was_reversed=False)
+
+    for row in prediction_rows:
+        if row.get("team_a") == team_b and row.get("team_b") == team_a:
+            return normalize_prediction_order(row, team_a, team_b, was_reversed=True)
 
     return None
-
-
-def get_available_matchups(prediction_rows, fallback_rows):
-    if prediction_rows:
-        return sorted(
-            {(row.get("team_a"), row.get("team_b")) for row in prediction_rows
-             if row.get("team_a") and row.get("team_b")}
-        )
-
-    if fallback_rows:
-        return sorted(
-            {(row.get("team_a"), row.get("team_b")) for row in fallback_rows
-             if row.get("team_a") and row.get("team_b")}
-        )
-
-    return []
 
 
 def make_html_table(rows, columns, probability_columns=None, max_rows=None):
@@ -203,124 +254,123 @@ tab1, tab2, tab3, tab4 = st.tabs(
 with tab1:
     st.header("Single Knockout Match Predictor")
 
-    available_matchups = get_available_matchups(prediction_rows, bracket_rows)
+    if prediction_rows:
+        rows_to_search = prediction_rows
+        st.caption("Using saved pairwise predictions from `match_prediction_matrix.csv`.")
+    else:
+        rows_to_search = bracket_rows
+        st.info(
+            "`match_prediction_matrix.csv` was not found, so this tab is using saved deterministic "
+            "bracket matchups only. Some team combinations may not be available until the matrix is generated."
+        )
 
-    if not available_matchups:
+    if not rows_to_search:
         st.warning(
-            "No saved match prediction CSV was found. Add either "
+            "No saved prediction CSV was found. Add either "
             "`data/processed/match_prediction_matrix.csv` or "
             "`data/processed/actual_deterministic_bracket_results.csv`."
         )
     else:
-        if prediction_rows is None:
-            st.info(
-                "Full match prediction matrix was not found, so this tab is using saved deterministic "
-                "bracket matchups only."
-            )
+        team_options = get_team_options(prediction_rows, bracket_rows)
 
-        matchup_labels = [f"{team_a} vs {team_b}" for team_a, team_b in available_matchups]
-        default_index = 0
+        col1, col2 = st.columns(2)
 
-        if "France vs Sweden" in matchup_labels:
-            default_index = matchup_labels.index("France vs Sweden")
+        with col1:
+            default_team_a = team_options.index("France") if "France" in team_options else 0
+            team_a = st.selectbox("Team A", team_options, index=default_team_a)
 
-        selected_label = st.selectbox(
-            "Choose a saved matchup",
-            matchup_labels,
-            index=default_index,
-        )
+        with col2:
+            default_team_b = team_options.index("Brazil") if "Brazil" in team_options else min(1, len(team_options) - 1)
+            team_b = st.selectbox("Team B", team_options, index=default_team_b)
 
-        team_a, team_b = available_matchups[matchup_labels.index(selected_label)]
-
-        if prediction_rows:
-            prediction = get_saved_match_prediction(
-                prediction_rows,
-                team_a,
-                team_b,
-            )
+        if team_a == team_b:
+            st.warning("Please choose two different teams.")
         else:
             prediction = get_saved_match_prediction(
-                bracket_rows,
+                rows_to_search,
                 team_a,
                 team_b,
             )
 
-        if prediction is None:
-            st.error("Prediction not found for this matchup.")
-        else:
-            st.subheader(f"{team_a} vs {team_b}")
+            if prediction is None:
+                st.error(
+                    f"No saved prediction was found for {team_a} vs {team_b}. "
+                    "Generate `data/processed/match_prediction_matrix.csv` to support every pairwise matchup."
+                )
+            else:
+                st.subheader(f"{team_a} vs {team_b}")
 
-            if "team_a_win_probability" in prediction:
-                metric_col1, metric_col2, metric_col3 = st.columns(3)
+                if "team_a_win_probability" in prediction:
+                    metric_col1, metric_col2, metric_col3 = st.columns(3)
 
-                metric_col1.metric(
-                    f"{team_a} Win",
-                    format_percent(prediction.get("team_a_win_probability")),
+                    metric_col1.metric(
+                        f"{team_a} Win",
+                        format_percent(prediction.get("team_a_win_probability")),
+                    )
+
+                    metric_col2.metric(
+                        "Draw",
+                        format_percent(prediction.get("draw_probability")),
+                    )
+
+                    metric_col3.metric(
+                        f"{team_b} Win",
+                        format_percent(prediction.get("team_b_win_probability")),
+                    )
+
+                    st.divider()
+
+                adv_col1, adv_col2, adv_col3 = st.columns(3)
+
+                adv_col1.metric(
+                    f"{team_a} Advances",
+                    format_percent(prediction.get("team_a_advancement_probability")),
                 )
 
-                metric_col2.metric(
-                    "Draw",
-                    format_percent(prediction.get("draw_probability")),
+                adv_col2.metric(
+                    f"{team_b} Advances",
+                    format_percent(prediction.get("team_b_advancement_probability")),
                 )
 
-                metric_col3.metric(
-                    f"{team_b} Win",
-                    format_percent(prediction.get("team_b_win_probability")),
+                adv_col3.metric(
+                    "Predicted Advancing Team",
+                    prediction.get("predicted_advancing_team", ""),
                 )
 
-                st.divider()
+                st.subheader("Saved Prediction Output")
 
-            adv_col1, adv_col2, adv_col3 = st.columns(3)
+                prediction_columns = [
+                    "round",
+                    "match_number",
+                    "team_a",
+                    "team_b",
+                    "predicted_outcome_from_team_a_perspective",
+                    "team_a_win_probability",
+                    "draw_probability",
+                    "team_b_win_probability",
+                    "team_a_advancement_probability",
+                    "team_b_advancement_probability",
+                    "predicted_advancing_team",
+                ]
 
-            adv_col1.metric(
-                f"{team_a} Advances",
-                format_percent(prediction.get("team_a_advancement_probability")),
-            )
+                prediction_columns = [col for col in prediction_columns if col in prediction]
 
-            adv_col2.metric(
-                f"{team_b} Advances",
-                format_percent(prediction.get("team_b_advancement_probability")),
-            )
+                probability_columns = [
+                    "team_a_win_probability",
+                    "draw_probability",
+                    "team_b_win_probability",
+                    "team_a_advancement_probability",
+                    "team_b_advancement_probability",
+                ]
 
-            adv_col3.metric(
-                "Predicted Advancing Team",
-                prediction.get("predicted_advancing_team", ""),
-            )
-
-            st.subheader("Saved Prediction Output")
-
-            prediction_columns = [
-                "round",
-                "match_number",
-                "team_a",
-                "team_b",
-                "predicted_outcome_from_team_a_perspective",
-                "team_a_win_probability",
-                "draw_probability",
-                "team_b_win_probability",
-                "team_a_advancement_probability",
-                "team_b_advancement_probability",
-                "predicted_advancing_team",
-            ]
-
-            prediction_columns = [col for col in prediction_columns if col in prediction]
-
-            probability_columns = [
-                "team_a_win_probability",
-                "draw_probability",
-                "team_b_win_probability",
-                "team_a_advancement_probability",
-                "team_b_advancement_probability",
-            ]
-
-            st.markdown(
-                make_html_table(
-                    [prediction],
-                    prediction_columns,
-                    probability_columns=probability_columns,
-                ),
-                unsafe_allow_html=True,
-            )
+                st.markdown(
+                    make_html_table(
+                        [prediction],
+                        prediction_columns,
+                        probability_columns=probability_columns,
+                    ),
+                    unsafe_allow_html=True,
+                )
 
 
 with tab2:
@@ -503,6 +553,7 @@ with tab4:
 
         The model predictions are generated ahead of time and saved to CSV files.
         The Streamlit app reads those saved outputs instead of loading the model directly.
+        This makes the app faster and more stable.
 
         ### Current Limitations
 
