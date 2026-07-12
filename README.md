@@ -10,6 +10,24 @@ The model predicts match outcomes from Team A's perspective:
 
 Those probabilities are then converted into knockout advancement probabilities and used to simulate a full bracket.
 
+## Streamlit Web App
+
+Built an interactive Streamlit app for exploring 2026 World Cup knockout predictions.
+
+The app includes:
+
+- Single-match knockout predictor with Team A / Team B selection
+- Deterministic bracket results using highest advancement probability
+- Monte Carlo tournament simulation results
+- Saved visualizations for championship, final, and semifinal probabilities
+
+For stability, the deployed app reads precomputed CSV outputs instead of loading the trained model directly.
+
+Run locally:
+
+```bash
+python -m streamlit run streamlit_app.py
+
 ## Project Goal
 
 The main goal is to build an end-to-end machine learning workflow that can:
