@@ -1,4 +1,4 @@
-# FIFA World Cup 2026 Knockout Match Prediction Project
+# FIFA World Cup 2026 Bracket Predictor
 
 Check out the app [here](https://fifawcpredictor.streamlit.app/)!
 
